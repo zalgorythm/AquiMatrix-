@@ -1,0 +1,14 @@
+{
+  "ADD": 3,
+  "SUB": 3,
+  "MUL": 5,
+  "DIV": 5,
+  "AND": 3,
+  "OR": 3,
+  "NOT": 3,
+  "SSTORE": 200,
+  "SLOAD": 50,
+  "JUMP": 8,
+  "JUMPI": 10,
+  "CALL": 25
+}

@@ -1,0 +1,197 @@
+AquiMatrix: A DAG-Based Ledger with Fractal Validation and Smart Contracts (Revised)
+Abstract
+Problem: Linear blockchains are limited by sequential blocks, reducing throughput and delaying finality. Existing DAGs provide parallelism but often lack built-in economic security layers and contract support.
+Proposal: A fixed out-degree DAG (“Triad Matrix”) where each entry references three predecessors; a two-stage cryptographic validation (“Proof of Fractal”); a deterministic, gas-metered virtual machine for smart contracts; a hybrid staking model integrated into tip selection and conflict resolution. The native token WŁC funds entry rewards, transaction fees, and staking incentives.
+Table of Contents
+ * Introduction
+ * System Overview
+ * Triad Matrix
+ * Proof of Fractal (PoF)
+ * Consensus Mechanism
+ * Tip Selection & Conflict Resolution
+ * Smart Contracts
+ * Tokenomics & Incentives
+ * System Components
+ * Security Analysis
+ * Performance Metrics
+ * Use Cases
+ * Future Work
+ * Conclusion
+1. Introduction
+AquiMatrix replaces the block-based chain with a Triad Matrix—a directed acyclic graph (DAG) where each entry E references exactly three prior entries (\text{P}_1, \text{P}_2, \text{P}_3). Validation uses Proof of Fractal (PoF): a hash-target puzzle plus a bit-pattern similarity test. A built-in virtual machine executes smart contracts, and a hybrid staking model ties economic stake to consensus. The WŁC token funds every aspect: entry rewards, transaction fees, and staking incentives.
+2. System Overview
+ * Ledger: DAG G=(V,E) where V represents entries and E represents directed edges. Each entry has a fixed out-degree of 3 (meaning it explicitly points to 3 predecessors). This fixed out-degree ensures a predictable graph structure.
+ * Validation: PoF combines difficulty and self-similarity. The two-stage Proof of Fractal (PoF) combines a hash-target puzzle with a bit-pattern similarity test, offering a novel approach to difficulty adjustment and potential resistance to specialized hardware.
+ * Consensus: Multi-level confirmation by references and weight.
+ * Execution: Stack-based, gas-metered VM per entry; state root included. The explicit inclusion of a deterministic, gas-metered virtual machine (VM) for smart contracts directly addresses a common limitation in existing DAG implementations.
+ * Incentives: Entry rewards, fee distribution, stake rewards.
+ * Architecture Layers: The "System Components" section clearly outlines the architectural layers and their functions.
+   * Data Ingestion
+   * PoF Solver
+   * VM & State
+   * Consensus Engine
+   * API Gateway
+   * Client Interfaces
+3. Triad Matrix
+3.1 Definition
+Graph G=(V,E). Each entry E$\inV has outgoing edges (references) to exactly three distinct predecessors (\text{P}_1, \text{P}2, \text{P}3$). Timestamps enforce acyclicity: $T{P_i}<T_E$. Requiring $T{P_i} < T_E$ for all predecessors logically guarantees the directed acyclic nature of the graph.
+3.2 Graph Structure
+[P1]   [P2]   [P3]  <-- Predecessor entries
+\      |      /
+\     |     /
+───────►[ E ]  <-- Newly published entry E references its predecessors
+ * Out-degree = 3 (number of direct predecessor entries explicitly referenced by a given entry). Note: In this document, "out-degree" refers to the number of references an entry makes to its predecessors, consistent with its usage here.
+ * In-degree variable; tip entries have an in-degree of 0 from successors (meaning no other subsequent entries currently reference them, thus they are the "tips" of the graph awaiting new references).
+3.3 Tip Set Management
+ * Tip Set \mathcal{T} = \{v\mid \nexists\,u:(u,v)\in E\} (entries that have no incoming edges from subsequent entries, i.e., those not yet referenced by any successor).
+ * Update Rule: Upon publishing entry E, its predecessors \text{P}_1, \text{P}_2, \text{P}_3 are removed from \mathcal{T} if they were present in the tip set (as they are no longer tips due to being referenced by E). The newly published entry E is immediately added to \mathcal{T}, as it has no successors yet.
+ * Aging Weight: For each tip t, weight w_{\text{age}}(t) = 1 + \alpha_{\text{age}}\times (t_{\text{now}} - T_t). The parameter \alpha_{\text{age}} is a system-wide constant or governance-adjustable parameter determining the rate at which age influences tip weight. This mechanism ensures older tips are eventually selected.
+4. Proof of Fractal (PoF)
+4.1 Entry Composition
+Fields of entry E:
+\{\text{H}(\text{P}_1), \text{H}(\text{P}_2), \text{H}(\text{P}_3),\, \text{T}_\text{E},\, \text{D}_\text{E},\, \text{N}_\text{E},\, \text{S}_\text{E}\}
+ * \text{D}_\text{E}: transaction data or contract code
+ * \text{S}_\text{E}: Merkle state root, which is a proposed state root resulting from the local execution of \text{D}_\text{E} by the solver of E. This \text{S}_\text{E} is included in the entry data prior to the final PoF hash computation.
+ * \text{H}(\text{P}_1), \text{H}(\text{P}_2), \text{H}(\text{P}_3): Full cryptographic hashes of the entire predecessor entries \text{P}_1, \text{P}_2, \text{P}_3 respectively.
+4.2 Difficulty Condition
+ * Compute aggregate hash:
+   \text{H}_{\mathrm{agg}} = \text{H}\bigl(\text{H}(\text{P}_1)\|\!\text{H}(\text{P}_2)\|\!\text{H}(\text{P}_3)\|\!\text{T}_\text{E}\|\!\text{D}_\text{E}\|\!\text{S}_\text{E}\bigr).
+ * Compute final:
+   \text{H}_\text{f} = \text{H}\bigl(\text{H}_{\mathrm{agg}}\|\!\text{N}_\text{E}\bigr).
+ * Require:
+   \text{H}_\text{f} < \text{Target}.
+   Target adjusts every M entries to target solve time \tau.
+4.3 Pattern Condition
+Define:
+\text{X} = \text{H}_\text{f} \oplus \text{H}\bigl(\text{H}(\text{P}_1)\|\!\text{H}(\text{P}_2)\|\!\text{H}(\text{P}_3)\bigr). (Here, \text{H}(\cdot) is applied to the concatenated predecessor hashes to produce a single hash for XOR with \text{H}_\text{f}, ensuring length compatibility.)
+Pass if:
+\mathrm{HammingDist}\bigl(\mathrm{prefix}_k(\text{X}),\,\mathrm{suffix}_k(\text{H}(\text{P}_1)\|\!\text{H}(\text{P}_2)\|\!\text{H}(\text{P}_3))\bigr)\le \delta.
+ * k: comparison bit-length
+ * \delta: max mismatches
+ * Random-pass probability \approx\sum_{i=0}^\delta \binom{k}{i}2^{-k}. This formula calculates the random-pass probability for the pattern condition only. The overall PoF success probability is the product of the probabilities of both the hash-target difficulty and the pattern condition being met. The dual PoF condition adds a novel and potentially robust layer of validation.
+4.4 Parameter Adjustment
+ * Target updated by
+   \text{Target}_{\mathrm{new}} = \text{Target}_{\mathrm{old}}\times\frac{\tau_{\mathrm{actual}}}{\tau}.
+ * k,\delta adjusted via governance or scheduled rules to keep target pass rate p.
+5. Consensus Mechanism
+5.1 Confirmation Levels
+Assign level L(E): The multi-level confirmation mechanism, based on references and weight, provides a structured approach to finality in a DAG.
+ * L=0 on publication.
+ * L=1 when entry is referenced by \ge3 entries that are themselves at L=0.
+ * For L>1, require:
+   * \ge3 incoming references from entries at level L-1.
+   * Level-specific weight W_{L-1}(E)\ge W_{\mathrm{thresh}}(L).
+5.2 Level-Specific Weight
+Compute weight at level L-1:
+w(E)=1, this is the base weight for any entry.
+W_{L-1}(E)=w(E)+\sum_{C\in \mathrm{Approvers}{L-1}(E)} W_{L-1}(C).
+—only children (entries that reference E) with confirmed level L-1 contribute their weight at that level.
+5.3 Threshold Dynamics
+Thresholds:
+W_{\mathrm{thresh}}(L) = W_0 \times r^L,
+with base W_0 and growth factor r>1 (e.g., W_0=3,r=2).
+6. Tip Selection & Conflict Resolution
+6.1 Selection Probability
+For tip \text{t}\in\mathcal{T}:
+\text{P}(\text{t}) = \lambda_{\text{PoF}}\frac{1/\mathrm{diff}(\text{t})}{\sum_{\text{u}\in\mathcal{T}}1/\mathrm{diff}(\text{u})} + \lambda_{\text{stake}}\frac{\mathrm{stake}(\text{t})}{\sum_{\text{u}\in\mathcal{T}}\mathrm{stake}(\text{u})} + \lambda_{\text{age}} \frac{w_{\text{age}}(t)}{\sum_{\text{u}\in\mathcal{T}}w_{\text{age}}(u)}.
+Where \lambda_{\text{PoF}}, \lambda_{\text{stake}}, \lambda_{\text{age}} are non-negative weighting factors summing to 1 (i.e., \lambda_{\text{PoF}} + \lambda_{\text{stake}} + \lambda_{\text{age}} = 1), controlling the influence of PoF difficulty, economic stake, and aging weight, respectively. These parameters are determined by network governance.
+ * \mathrm{diff}(\text{t})=2^{256}/\text{Target}(\text{t}).
+   The hybrid tip selection incorporating difficulty, stake, and aging weight provides a balanced approach to encourage network health and prevent tip stagnation.
+6.2 Conflict Identification
+Maintain resource map \text{r}\mapsto \text{E}. Two entries conflict if referencing same resource r.
+6.3 Branch Scoring
+For each conflict root \text{E}_\text{i}, compute:
+\text{S}_\text{i} = \sum_{\text{E}\in \mathrm{Descendants}(\text{E}_\text{i})} \bigl(\text{W}(\text{E}) + \alpha_{\mathrm{stake}}\times\mathrm{stake}(\text{E})\bigr).
+Select branch with maximal \text{S}_\text{i}; orphan others.
+The hybrid staking model, integrated into tip selection and conflict resolution, provides an economic security layer alongside PoF.
+7. Smart Contracts
+7.1 VM Architecture
+ * Stack-based: push/pop operations
+ * Opcodes: arithmetic, logic, storage, calls
+ * Deterministic: no non-determinism
+ * Gas-metered: each opcode consumes gas
+7.2 State Model
+ * Merkle Patricia Trie storing key–value state.
+ * State Root \text{S}_\text{E} recorded in entry after execution. Using a Merkle Patricia Trie for state management, with the state root committed in each entry, ensures efficient and cryptographically verifiable state transitions.
+7.3 Gas Accounting
+ * Gas Limit & Gas Price set per entry
+ * Fee = gasUsed$\times$gasPrice + baseFee
+ * Distribution: gas fees \to validators; baseFee \to burned. This fee distribution aligns incentives, compensates network participants, and introduces a deflationary mechanism.
+7.4 Execution Flow
+ * A solver proposes a new entry, locally executing its \text{D}_\text{E} (transaction data or contract code) against the current confirmed state (derived from its predecessors) to derive a candidate \text{S}_\text{E} (Merkle state root).
+ * This proposed \text{S}_\text{E} is then included in the entry data. The solver then computes the PoF for this entry (including its proposed \text{S}_\text{E}).
+ * Upon successful PoF solution, the entry is published to the DAG.
+ * Other nodes receiving the published entry will re-execute \text{D}_\text{E} against the locally derived and synchronized confirmed state of the predecessors to verify that the proposed \text{S}_\text{E} is indeed the correct and deterministic result. An entry with an invalid \text{S}_\text{E} (i.e., one that doesn't match the result of the re-execution) will be rejected by honest nodes, even if its PoF is valid. This process ensures deterministic state execution and validation by relying on consistent confirmed state across the network, which is maintained through the consensus mechanism.
+8. Tokenomics & Incentives
+8.1 Supply & Minting
+ * Cap: 21,000,000 WŁC. A hard cap provides scarcity and predictable long-term tokenomics.
+ * The total WŁC supply is hard-capped at 21,000,000 WŁC. Both Entry Rewards and PoF Bonuses are mechanisms for the controlled release of this initial, finite, pre-allocated supply into circulation over time, rather than representing new token minting beyond the cap.
+8.2 Entry Rewards
+Trigger on Level 2 confirmation. Let \text{N}_2 = number of entries with \text{L}\ge2:
+\text{R}(\text{N}_2) = 50 \times \bigl(\tfrac12\bigr)^{\lfloor \text{N}_2/210{,}000\rfloor}. These rewards are drawn from the pre-allocated fixed supply of 21,000,000 WŁC.
+8.3 Staking Mechanics
+ * Lock-up: stake locked for epoch \text{T}_\text{s}
+ * Stake Weight: \mathrm{stake}(\text{t}) used in tip selection and branch scoring
+ * Parameter \alpha_{\mathrm{stake}} set by governance (default 0.7)
+ * Rewards: \alpha_{\mathrm{stake}}\times fee pool + PoF bonus. The "PoF bonus" is a scheduled distribution of WŁC from the initial capped supply, specifically allocated to stakers who successfully contribute to PoF solutions.
+8.4 Fee Structure
+ * Gas Fees: gasUsed$\times$gasPrice \to validators
+ * Base Fee: fixed amount \to burned
+ * No separate fixed fee category
+   The native token (WŁC) funding entry rewards, transaction fees, and staking incentives creates a cohesive economic model within the system.
+9. System Components
+┌──────────────────┐
+│ Data Ingestion   │
+└─┬────────────────┘
+│
+┌─▼────────────────┐
+│ PoF Solver       │
+└─┬────────────────┘
+│
+┌─▼────────────────┐
+│ VM & State       │
+└─┬────────────────┘
+│
+┌─▼────────────────┐
+│ Consensus Engine │
+└─┬────────────────┘
+│
+┌─▼────────────────┐
+│ API Gateway      │
+└─┬────────────────┘
+│
+┌─▼────────────────┐
+│ Client Interfaces│
+└──────────────────┘
+ * Data Ingestion: schema, signature, timestamp.
+ * PoF Solver: difficulty and pattern checks.
+ * VM & State: smart contract execution, MPT updates.
+ * Consensus Engine: DAG updates, level assignment, pruning. The pruning strategy involves removing entries older than a certain confirmation level or time threshold to manage storage, while retaining necessary checkpoint state roots and headers. Historical state reconstruction for light clients would rely on cryptographic proofs (e.g., Merkle proofs) against these periodically established and retained checkpoint state roots and their corresponding headers, allowing verification of historical state and transaction inclusion without storing the entire pruned history.
+ * API Gateway: REST & WebSocket endpoints.
+ * Client Interfaces: CLI, SDKs (Python/JS/Rust), GUI.
+10. Security Analysis
+ * Sybil Resistance: PoF enforces compute cost; staking adds economic cost. This systematically addresses Sybil resistance by imposing a cost for participation.
+ * Double-Spend Prevention: multi-level confirmation; branch scoring prunes conflicts.
+ * Spam Control: pattern condition and gas limits raise cost of empty or abusive entries.
+ * Censorship Resistance: no single entry proposer; tip selection weighted by PoF and stake.
+   The "Security Analysis" systematically addresses common distributed ledger vulnerabilities.
+11. Performance Metrics
+ * Throughput: scales with PoF solver count until network bandwidth or processing limits. A more detailed performance model considering network propagation delays and computational load per entry would provide a deeper analysis of these scaling factors.
+ * Inclusion Latency: approximately the target solve time \tau.
+ * Finality Latency: time to reach target level \text{L}_\text{f} \approx \tfrac{\text{L}_\text{f}\;\tau}{\text{avgRefs/sec}}.
+ * Storage: full entries store entire DAG and MPT; light clients store headers and proofs.
+   The "Performance Metrics" section provides clear indicators for evaluating the system's efficiency.
+12. Use Cases
+ * DeFi: on-chain lending, AMMs with customizable finality levels.
+ * NFTs: mint, transfer, and programmatic updates via contracts.
+ * Supply Chain: contract-enforced provenance and traceability.
+ * Audit Trails: append-only, time-stamped records with contract-driven validations.
+ * Gaming: gas-metered in-game logic and secure asset trades.
+   The listed "Use Cases" demonstrate practical applications for the proposed AquiMatrix system.
+13. Future Work
+ * Cross-Chain Integration: standards for message passing between DAGs and blockchains.
+ * DAG Sharding: partition graph and state by application domain or geography.
+ * ZK-PoF: zero-knowledge proofs for pattern condition without revealing hashes.
+ * On-Chain Governance: A detailed on-chain governance mechanism will be developed, likely involving direct or delegated token-weighted voting. This system will facilitate proposal submission, transparent voting periods, and automated or multi-signature execution of parameter changes (\alpha_{\text{age}}, k, \delta, \lambda_{\text{PoF}}, \lambda_{\text{stake}}, \lambda_{\text{age}}, \alpha_{\text{stake}}, etc.) and protocol upgrades, ensuring decentralization and adaptability.
+14. Conclusion
+Entries reference three predecessors; each passes a two-stage PoF validation; smart contracts execute in a gas-metered VM; consensus advances entries through discrete levels using level-specific weight; incentives align network security and economics via entry rewards, fees, and staking. This design balances parallel processing, security, and programmable logic in a unified DAG-based ecosystem.

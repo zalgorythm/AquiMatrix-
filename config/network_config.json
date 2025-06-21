@@ -1,0 +1,13 @@
+{
+  "max_connections": 50,
+  "entry_broadcast_interval": 5,
+  "sync_timeout": 30,
+  "confirmation_thresholds": {
+    "level_1": 100,
+    "level_2": 1000,
+    "level_3": 10000
+  },
+  "api_keys": [
+    "your_api_key_here"
+  ]
+}

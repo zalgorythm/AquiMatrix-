@@ -1,0 +1,2 @@
+/project/sandbox/user-workspace/api_gateway/websocket_server.py:44: DeprecationWarning: The explicit passing of coroutine objects to asyncio.wait() is deprecated since Python 3.8, and scheduled for removal in Python 3.11.
+  await asyncio.wait([client.send(json.dumps(message_data)) for client in clients])
